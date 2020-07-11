@@ -42,8 +42,9 @@ def nn_matching(full_pc, idx, k, complete_fps=True):
 
 
 # fmt: off
-def get_parser():
-    parser = argparse.ArgumentParser("SampleNet: Differentiable Point Cloud Sampling")
+def get_parser(parser=None):
+    if parser is None:
+        parser = argparse.ArgumentParser("SampleNet: Differentiable Point Cloud Sampling")
 
     parser.add_argument("--skip-projection", action="store_true", help="Do not project points in training")
 
