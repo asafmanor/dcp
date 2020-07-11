@@ -85,7 +85,21 @@ def test_one_epoch(args, net, test_loader, sampler):
 
         batch_size = src.size(0)
         num_examples += batch_size
-        rotation_ab_pred, translation_ab_pred, rotation_ba_pred, translation_ba_pred = net(src, target)
+
+        # Sample points
+        samplenet_loss = torch.tensor([0.0]).cuda()
+        if sampler is not None:
+            src_sampled = sampler(src)
+            target_sampled = sampler(target)
+            if isinstance(sampler, SampleNet):
+                samplenet_loss = 0.5 * sampler.alpha * sampler.get_simplification_loss(src, src_sampled, 0)
+                samplenet_loss += 0.5 * sampler.alpha * sampler.get_simplification_loss(target, target_sampled, 0)
+                samplenet_loss += sampler.lmbda * sampler.get_projection_loss()
+        else:
+            src_sampled = src
+            target_sampled = target
+
+        rotation_ab_pred, translation_ab_pred, rotation_ba_pred, translation_ba_pred = net(src_sampled, target_sampled)
 
         ## save rotation and translation
         rotations_ab.append(rotation_ab.detach().cpu().numpy())
@@ -117,6 +131,7 @@ def test_one_epoch(args, net, test_loader, sampler):
 
             loss = loss + cycle_loss * 0.1
 
+        loss = loss + samplenet_loss
         total_loss += loss.item() * batch_size
 
         if args.cycle:
@@ -183,7 +198,21 @@ def train_one_epoch(args, net, train_loader, opt, sampler):
         batch_size = src.size(0)
         opt.zero_grad()
         num_examples += batch_size
-        rotation_ab_pred, translation_ab_pred, rotation_ba_pred, translation_ba_pred = net(src, target)
+
+        # Sample points
+        samplenet_loss = torch.tensor([0.0]).cuda()
+        if sampler is not None:
+            src_sampled = sampler(src)
+            target_sampled = sampler(target)
+            if isinstance(sampler, SampleNet):
+                samplenet_loss = 0.5 * sampler.alpha * sampler.get_simplification_loss(src, src_sampled, 0)
+                samplenet_loss += 0.5 * sampler.alpha * sampler.get_simplification_loss(target, target_sampled, 0)
+                samplenet_loss += sampler.lmbda * sampler.get_projection_loss()
+        else:
+            src_sampled = src
+            target_sampled = target
+
+        rotation_ab_pred, translation_ab_pred, rotation_ba_pred, translation_ba_pred = net(src_sampled, target_sampled)
 
         ## save rotation and translation
         rotations_ab.append(rotation_ab.detach().cpu().numpy())
@@ -213,6 +242,8 @@ def train_one_epoch(args, net, train_loader, opt, sampler):
             cycle_loss = rotation_loss + translation_loss
 
             loss = loss + cycle_loss * 0.1
+
+        loss = loss + samplenet_loss
 
         loss.backward()
         opt.step()
@@ -628,6 +659,8 @@ def main():
             args.bottleneck_size,
             args.projection_group_size,
         )
+        sampler.alpha = args.alpha
+        sampler.lmbda = args.lmbda
     elif args.model == "random_dcp":
         sampler = RandomSampler(args.num_out_points)
     elif args.model == "fps_dcp":

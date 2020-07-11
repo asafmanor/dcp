@@ -158,11 +158,7 @@ class SampleNet(nn.Module):
 
         out = proj if self.training else match
 
-        return simp, out
-
-    def sample(self, x):
-        simp, proj, match, feat = self.__call__(x)
-        return proj
+        return out
 
     # Losses:
     # At inference time, there are no sampling losses.
