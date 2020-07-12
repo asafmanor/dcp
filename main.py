@@ -60,6 +60,7 @@ def test_one_epoch(args, net, test_loader):
     mae_ba = 0
 
     total_loss = 0
+    total_samplenet_loss = 0
     total_cycle_loss = 0
     num_examples = 0
     rotations_ab = []
@@ -135,6 +136,7 @@ def test_one_epoch(args, net, test_loader):
 
         loss = loss + samplenet_loss
         total_loss += loss.item() * batch_size
+        total_samplenet_loss += samplenet_loss.item() * batch_size
 
         if args.cycle:
             total_cycle_loss = total_cycle_loss + cycle_loss.item() * 0.1 * batch_size
@@ -162,7 +164,7 @@ def test_one_epoch(args, net, test_loader):
            mse_ab * 1.0 / num_examples, mae_ab * 1.0 / num_examples, \
            mse_ba * 1.0 / num_examples, mae_ba * 1.0 / num_examples, rotations_ab, \
            translations_ab, rotations_ab_pred, translations_ab_pred, rotations_ba, \
-           translations_ba, rotations_ba_pred, translations_ba_pred, eulers_ab, eulers_ba
+           translations_ba, rotations_ba_pred, translations_ba_pred, eulers_ab, eulers_ba, total_samplenet_loss * 1.0 / num_examples
 
 
 def train_one_epoch(args, net, train_loader, opt):
@@ -174,6 +176,7 @@ def train_one_epoch(args, net, train_loader, opt):
     mae_ba = 0
 
     total_loss = 0
+    total_samplenet_loss = 0
     total_cycle_loss = 0
     num_examples = 0
     rotations_ab = []
@@ -251,6 +254,7 @@ def train_one_epoch(args, net, train_loader, opt):
         loss.backward()
         opt.step()
         total_loss += loss.item() * batch_size
+        total_samplenet_loss += samplenet_loss.item() * batch_size
 
         if args.cycle:
             total_cycle_loss = total_cycle_loss + cycle_loss.item() * 0.1 * batch_size
@@ -278,7 +282,7 @@ def train_one_epoch(args, net, train_loader, opt):
            mse_ab * 1.0 / num_examples, mae_ab * 1.0 / num_examples, \
            mse_ba * 1.0 / num_examples, mae_ba * 1.0 / num_examples, rotations_ab, \
            translations_ab, rotations_ab_pred, translations_ab_pred, rotations_ba, \
-           translations_ba, rotations_ba_pred, translations_ba_pred, eulers_ab, eulers_ba
+           translations_ba, rotations_ba_pred, translations_ba_pred, eulers_ab, eulers_ba, total_samplenet_loss * 1.0 / num_examples
 
 
 def test(args, net, test_loader, boardio, textio):
@@ -287,7 +291,7 @@ def test(args, net, test_loader, boardio, textio):
     test_mse_ab, test_mae_ab, test_mse_ba, test_mae_ba, test_rotations_ab, test_translations_ab, \
     test_rotations_ab_pred, \
     test_translations_ab_pred, test_rotations_ba, test_translations_ba, test_rotations_ba_pred, \
-    test_translations_ba_pred, test_eulers_ab, test_eulers_ba = test_one_epoch(args, net, test_loader)
+    test_translations_ba_pred, test_eulers_ab, test_eulers_ba, _ = test_one_epoch(args, net, test_loader)
     test_rmse_ab = np.sqrt(test_mse_ab)
     test_rmse_ba = np.sqrt(test_mse_ba)
 
@@ -365,12 +369,12 @@ def train(args, net, train_loader, test_loader, boardio, textio):
         train_mse_ab, train_mae_ab, train_mse_ba, train_mae_ba, train_rotations_ab, train_translations_ab, \
         train_rotations_ab_pred, \
         train_translations_ab_pred, train_rotations_ba, train_translations_ba, train_rotations_ba_pred, \
-        train_translations_ba_pred, train_eulers_ab, train_eulers_ba = train_one_epoch(args, net, train_loader, opt)
+        train_translations_ba_pred, train_eulers_ab, train_eulers_ba, train_samplenet_loss = train_one_epoch(args, net, train_loader, opt)
         test_loss, test_cycle_loss, \
         test_mse_ab, test_mae_ab, test_mse_ba, test_mae_ba, test_rotations_ab, test_translations_ab, \
         test_rotations_ab_pred, \
         test_translations_ab_pred, test_rotations_ba, test_translations_ba, test_rotations_ba_pred, \
-        test_translations_ba_pred, test_eulers_ab, test_eulers_ba = test_one_epoch(args, net, test_loader)
+        test_translations_ba_pred, test_eulers_ab, test_eulers_ba, test_samplenet_loss = test_one_epoch(args, net, test_loader)
         train_rmse_ab = np.sqrt(train_mse_ab)
         test_rmse_ab = np.sqrt(test_mse_ab)
 
@@ -481,6 +485,7 @@ def train(args, net, train_loader, test_loader, boardio, textio):
                          best_test_r_mae_ba, best_test_t_mse_ba, best_test_t_rmse_ba, best_test_t_mae_ba))
 
         boardio.add_scalar('A->B/train/loss', train_loss, epoch)
+        boardio.add_scalar('A->B/train/samplenet_loss', train_samplenet_loss, epoch)
         boardio.add_scalar('A->B/train/MSE', train_mse_ab, epoch)
         boardio.add_scalar('A->B/train/RMSE', train_rmse_ab, epoch)
         boardio.add_scalar('A->B/train/MAE', train_mae_ab, epoch)
@@ -504,6 +509,7 @@ def train(args, net, train_loader, test_loader, boardio, textio):
 
         ############TEST
         boardio.add_scalar('A->B/test/loss', test_loss, epoch)
+        boardio.add_scalar('A->B/test/samplenet_loss', test_samplenet_loss, epoch)
         boardio.add_scalar('A->B/test/MSE', test_mse_ab, epoch)
         boardio.add_scalar('A->B/test/RMSE', test_rmse_ab, epoch)
         boardio.add_scalar('A->B/test/MAE', test_mae_ab, epoch)
