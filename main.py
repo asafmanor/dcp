@@ -52,7 +52,7 @@ def _init_(args):
     os.system('cp data.py checkpoints' + '/' + args.exp_name + '/' + 'data.py.backup')
 
 
-def test_one_epoch(args, net, test_loader, sampler):
+def test_one_epoch(args, net, test_loader):
     net.eval()
     mse_ab = 0
     mae_ab = 0
@@ -88,6 +88,7 @@ def test_one_epoch(args, net, test_loader, sampler):
 
         # Sample points
         samplenet_loss = torch.tensor([0.0]).cuda()
+        sampler = net.sampler
         if sampler is not None:
             src_sampled = sampler(src)
             target_sampled = sampler(target)
@@ -163,7 +164,7 @@ def test_one_epoch(args, net, test_loader, sampler):
            translations_ba, rotations_ba_pred, translations_ba_pred, eulers_ab, eulers_ba
 
 
-def train_one_epoch(args, net, train_loader, opt, sampler):
+def train_one_epoch(args, net, train_loader, opt):
     net.train()
 
     mse_ab = 0
@@ -201,6 +202,7 @@ def train_one_epoch(args, net, train_loader, opt, sampler):
 
         # Sample points
         samplenet_loss = torch.tensor([0.0]).cuda()
+        sampler = net.sampler
         if sampler is not None:
             src_sampled = sampler(src)
             target_sampled = sampler(target)
@@ -278,7 +280,7 @@ def train_one_epoch(args, net, train_loader, opt, sampler):
            translations_ba, rotations_ba_pred, translations_ba_pred, eulers_ab, eulers_ba
 
 
-def test(args, net, test_loader, boardio, textio, sampler):
+def test(args, net, test_loader, boardio, textio):
 
     test_loss, test_cycle_loss, \
     test_mse_ab, test_mae_ab, test_mse_ba, test_mae_ba, test_rotations_ab, test_translations_ab, \
@@ -318,7 +320,7 @@ def test(args, net, test_loader, boardio, textio, sampler):
                      test_r_mae_ba, test_t_mse_ba, test_t_rmse_ba, test_t_mae_ba))
 
 
-def train(args, net, train_loader, test_loader, boardio, textio, sampler):
+def train(args, net, train_loader, test_loader, boardio, textio):
     if args.use_sgd:
         print("Use SGD")
         opt = optim.SGD(net.parameters(), lr=args.lr * 100, momentum=args.momentum, weight_decay=1e-4)
@@ -358,12 +360,12 @@ def train(args, net, train_loader, test_loader, boardio, textio, sampler):
         train_mse_ab, train_mae_ab, train_mse_ba, train_mae_ba, train_rotations_ab, train_translations_ab, \
         train_rotations_ab_pred, \
         train_translations_ab_pred, train_rotations_ba, train_translations_ba, train_rotations_ba_pred, \
-        train_translations_ba_pred, train_eulers_ab, train_eulers_ba = train_one_epoch(args, net, train_loader, opt, sampler)
+        train_translations_ba_pred, train_eulers_ab, train_eulers_ba = train_one_epoch(args, net, train_loader, opt)
         test_loss, test_cycle_loss, \
         test_mse_ab, test_mae_ab, test_mse_ba, test_mae_ba, test_rotations_ab, test_translations_ab, \
         test_rotations_ab_pred, \
         test_translations_ab_pred, test_rotations_ba, test_translations_ba, test_rotations_ba_pred, \
-        test_translations_ba_pred, test_eulers_ab, test_eulers_ba = test_one_epoch(args, net, test_loader, sampler)
+        test_translations_ba_pred, test_eulers_ab, test_eulers_ba = test_one_epoch(args, net, test_loader)
         train_rmse_ab = np.sqrt(train_mse_ab)
         test_rmse_ab = np.sqrt(test_mse_ab)
 
@@ -635,8 +637,8 @@ def main():
         raise Exception("not implemented")
 
     if args.model in ['dcp', 'samplenet_dcp', 'random_dcp', 'fps_dcp']:
-        sampler = None
         net = DCP(args).cuda()
+        net.sampler = None
         if args.eval:
             if args.model_path is '':
                 model_path = 'checkpoints' + '/' + args.exp_name + '/models/model.best.t7'
@@ -654,22 +656,22 @@ def main():
         raise Exception('Not implemented')
 
     if args.model = 'samplenet_dcp':
-        sampler = SampleNet(
+        net.sampler = SampleNet(
             args.num_out_points,
             args.bottleneck_size,
             args.projection_group_size,
         )
-        sampler.alpha = args.alpha
-        sampler.lmbda = args.lmbda
+        net.sampler.alpha = args.alpha
+        net.sampler.lmbda = args.lmbda
     elif args.model == "random_dcp":
-        sampler = RandomSampler(args.num_out_points)
+        net.sampler = RandomSampler(args.num_out_points)
     elif args.model == "fps_dcp":
-        sampler = FPSSampler(args.num_out_points, permute=True)
+        net.sampler = FPSSampler(args.num_out_points, permute=True)
 
     if args.eval:
-        test(args, net, test_loader, boardio, textio, sampler)
+        test(args, net, test_loader, boardio, textio)
     else:
-        train(args, net, train_loader, test_loader, boardio, textio, sampler)
+        train(args, net, train_loader, test_loader, boardio, textio)
 
 
     print('FINISH')
