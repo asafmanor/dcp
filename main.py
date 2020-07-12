@@ -100,7 +100,8 @@ def test_one_epoch(args, net, test_loader):
             src_sampled = src
             target_sampled = target
 
-        rotation_ab_pred, translation_ab_pred, rotation_ba_pred, translation_ba_pred = net(src_sampled, target_sampled)
+        with torch.no_grad():
+            rotation_ab_pred, translation_ab_pred, rotation_ba_pred, translation_ba_pred = net(src_sampled, target_sampled)
 
         ## save rotation and translation
         rotations_ab.append(rotation_ab.detach().cpu().numpy())
