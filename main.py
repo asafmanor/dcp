@@ -650,15 +650,6 @@ def main():
     net = DCP(args).cuda()
     net.sampler = None
 
-    # Load pretrained model
-    if args.model_path is not '':
-        model_path = args.model_path
-        print(model_path)
-        if not os.path.exists(model_path):
-            print("can't find pretrained model")
-            return
-        net.load_state_dict(torch.load(model_path), strict=False)
-
     if torch.cuda.device_count() > 1:
         net = nn.DataParallel(net)
         print("Let's use", torch.cuda.device_count(), "GPUs!")
@@ -675,6 +666,15 @@ def main():
         net.sampler = RandomSampler(args.num_out_points).cuda()
     elif args.model == "fps_dcp":
         net.sampler = FPSSampler(args.num_out_points, permute=True).cuda()
+
+    # Load pretrained model
+    if args.model_path is not '':
+        model_path = args.model_path
+        print(model_path)
+        if not os.path.exists(model_path):
+            print("can't find pretrained model")
+            return
+        net.load_state_dict(torch.load(model_path), strict=False)
 
     if args.eval:
         test(args, net, test_loader, boardio, textio)
