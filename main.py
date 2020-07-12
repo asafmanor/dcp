@@ -321,14 +321,18 @@ def test(args, net, test_loader, boardio, textio):
 
 
 def train(args, net, train_loader, test_loader, boardio, textio):
-    if args.use_sgd:
-        print("Use SGD")
-        opt = optim.SGD(net.parameters(), lr=args.lr * 100, momentum=args.momentum, weight_decay=1e-4)
+    if isinstance(net.sampler, SampleNet):
+        net.requires_grad_(False)
+        net.sampler.requires_grad_(True)
+        opt = optim.Adam(net.sampler.parameters(), lr=args.lr * 100)
     else:
-        print("Use Adam")
-        opt = optim.Adam(net.parameters(), lr=args.lr, weight_decay=1e-4)
+        if args.use_sgd:
+            print("Use SGD")
+            opt = optim.SGD(net.parameters(), lr=args.lr * 100, momentum=args.momentum, weight_decay=1e-4)
+        else:
+            print("Use Adam")
+            opt = optim.Adam(net.parameters(), lr=args.lr, weight_decay=1e-4)
     scheduler = MultiStepLR(opt, milestones=[75, 150, 200], gamma=0.1)
-
 
     best_test_loss = np.inf
     best_test_cycle_loss = np.inf
@@ -655,18 +659,18 @@ def main():
     else:
         raise Exception('Not implemented')
 
-    if args.model = 'samplenet_dcp':
+    if args.model == 'samplenet_dcp':
         net.sampler = SampleNet(
             args.num_out_points,
             args.bottleneck_size,
             args.projection_group_size,
-        )
+        ).cuda()
         net.sampler.alpha = args.alpha
         net.sampler.lmbda = args.lmbda
     elif args.model == "random_dcp":
-        net.sampler = RandomSampler(args.num_out_points)
+        net.sampler = RandomSampler(args.num_out_points).cuda()
     elif args.model == "fps_dcp":
-        net.sampler = FPSSampler(args.num_out_points, permute=True)
+        net.sampler = FPSSampler(args.num_out_points, permute=True).cuda()
 
     if args.eval:
         test(args, net, test_loader, boardio, textio)
