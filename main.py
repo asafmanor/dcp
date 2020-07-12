@@ -325,7 +325,7 @@ def train(args, net, train_loader, test_loader, boardio, textio):
     if isinstance(net.sampler, SampleNet):
         net.requires_grad_(False)
         net.sampler.requires_grad_(True)
-        opt = optim.Adam(net.sampler.parameters(), lr=args.lr * 100)
+        opt = optim.Adam(net.sampler.parameters(), lr=args.lr)
     else:
         if args.use_sgd:
             print("Use SGD")
@@ -560,7 +560,7 @@ def main():
     parser.add_argument('--exp_name', type=str, default='exp', metavar='N',
                         help='Name of the experiment')
     parser.add_argument('--model', type=str, default='dcp', metavar='N',
-                        choices=['dcp'],
+                        choices=['dcp', 'samplenet_dcp', 'fps_dcp', 'random_dcp'],
                         help='Model to use, [dcp]')
     parser.add_argument('--emb_nn', type=str, default='pointnet', metavar='N',
                         choices=['pointnet', 'dgcnn'],
@@ -641,24 +641,21 @@ def main():
     else:
         raise Exception("not implemented")
 
-    if args.model in ['dcp', 'samplenet_dcp', 'random_dcp', 'fps_dcp']:
-        net = DCP(args).cuda()
-        net.sampler = None
-        if args.eval:
-            if args.model_path is '':
-                model_path = 'checkpoints' + '/' + args.exp_name + '/models/model.best.t7'
-            else:
-                model_path = args.model_path
-                print(model_path)
-            if not os.path.exists(model_path):
-                print("can't find pretrained model")
-                return
-            net.load_state_dict(torch.load(model_path), strict=False)
-        if torch.cuda.device_count() > 1:
-            net = nn.DataParallel(net)
-            print("Let's use", torch.cuda.device_count(), "GPUs!")
-    else:
-        raise Exception('Not implemented')
+    net = DCP(args).cuda()
+    net.sampler = None
+
+    # Load pretrained model
+    if args.model_path is not '':
+        model_path = args.model_path
+        print(model_path)
+        if not os.path.exists(model_path):
+            print("can't find pretrained model")
+            return
+        net.load_state_dict(torch.load(model_path), strict=False)
+
+    if torch.cuda.device_count() > 1:
+        net = nn.DataParallel(net)
+        print("Let's use", torch.cuda.device_count(), "GPUs!")
 
     if args.model == 'samplenet_dcp':
         net.sampler = SampleNet(
