@@ -21,8 +21,7 @@ from tqdm import tqdm
 
 from samplenet import sputils
 from samplenet.samplenet import SampleNet
-from samplenet.random_sampling import RandomSampler
-from samplenet.fps import FPSSampler
+from samplenet.samplers import FPSSampler, RandomSampler
 
 
 # Part of the code is referred from: https://github.com/floodsung/LearningToCompare_FSL
@@ -670,7 +669,7 @@ def main():
     # Load pretrained model
     if args.model_path is not '':
         model_path = args.model_path
-        print(model_path)
+        print(f"Loading {model_path}")
         if not os.path.exists(model_path):
             print("can't find pretrained model")
             return
