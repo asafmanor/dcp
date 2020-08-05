@@ -20,7 +20,7 @@ from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
 from samplenet import sputils
-from samplenet.samplenet import SampleNet
+from samplenet.samplenet import SampleNet, SampleNetPlus
 from samplenet.samplers import FPSSampler, RandomSampler
 
 
@@ -565,7 +565,7 @@ def main():
     parser.add_argument('--exp_name', type=str, default='exp', metavar='N',
                         help='Name of the experiment')
     parser.add_argument('--model', type=str, default='dcp', metavar='N',
-                        choices=['dcp', 'samplenet_dcp', 'fps_dcp', 'random_dcp'],
+                        choices=['dcp', 'samplenet_dcp', 'samplenetplus_dcp', 'fps_dcp', 'random_dcp'],
                         help='Model to use, [dcp]')
     parser.add_argument('--emb_nn', type=str, default='pointnet', metavar='N',
                         choices=['pointnet', 'dgcnn'],
@@ -655,6 +655,14 @@ def main():
 
     if args.model == 'samplenet_dcp':
         net.sampler = SampleNet(
+            args.num_out_points,
+            args.bottleneck_size,
+            args.projection_group_size,
+        ).cuda()
+        net.sampler.alpha = args.alpha
+        net.sampler.lmbda = args.lmbda
+    elif args.model == 'samplenetplus_dcp':
+        net.sampler = SampleNetPlus(
             args.num_out_points,
             args.bottleneck_size,
             args.projection_group_size,
