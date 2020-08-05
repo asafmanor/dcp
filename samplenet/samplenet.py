@@ -8,15 +8,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from knn_cuda import KNN
 
-try:
-    from .soft_projection import SoftProjection
-    from .chamfer_distance import ChamferDistance
-    from . import sputils
-except (ModuleNotFoundError, ImportError) as err:
-    print(err.__repr__())
-    from soft_projection import SoftProjection
-    from chamfer_distance import ChamferDistance
-    import sputils
+import samplenet.ops as ops
+import samplenet.samplers as samplers
+from samplenet import sputils
+from samplenet.chamfer_distance import ChamferDistance
+from samplenet.soft_projection import SoftProjection
 
 
 class SampleNet(nn.Module):
@@ -79,46 +75,31 @@ class SampleNet(nn.Module):
         self.input_shape = input_shape
         self.output_shape = output_shape
 
-    def forward(self, x: torch.Tensor):
-        # x shape should be B x 3 x N
-        if self.input_shape == "bnc":
-            x = x.permute(0, 2, 1)
-
-        if x.shape[1] != 3:
-            raise RuntimeError("shape of x must be of [Batch x 3 x NumInPoints]")
-
+    def encode_global(self, x: torch.Tensor) -> torch.Tensor:
         y = F.relu(self.bn1(self.conv1(x)))
         y = F.relu(self.bn2(self.conv2(y)))
         y = F.relu(self.bn3(self.conv3(y)))
         y = F.relu(self.bn4(self.conv4(y)))
-        y = F.relu(self.bn5(self.conv5(y)))  # Batch x 128 x NumInPoints
+        y = F.relu(self.bn5(self.conv5(y)))  # batch x 128 x num_in_points
 
         # Max pooling for global feature vector:
-        y = torch.max(y, 2)[0]  # Batch x 128
+        return torch.max(y, 2)[0]  # batch x 128
 
-        y = F.relu(self.bn_fc1(self.fc1(y)))
-        y = F.relu(self.bn_fc2(self.fc2(y)))
-        y = F.relu(self.bn_fc3(self.fc3(y)))
-        y = self.fc4(y)
-
-        y = y.view(-1, 3, self.num_out_points)
-
-        # Simplified points
-        simp = y
+    def project_and_match(self, x: torch.Tensor, simp: torch.Tensor) -> torch.Tensor:
         match = None
         proj = None
 
         # Projected points
         if self.training:
             if not self.skip_projection:
-                proj = self.project(point_cloud=x, query_cloud=y)
+                proj = self.project(point_cloud=x, query_cloud=simp)
             else:
                 proj = simp
 
         # Matched points
         else:  # Inference
             # Retrieve nearest neighbor indices
-            _, idx = KNN(1, transpose_mode=False)(x.contiguous(), y.contiguous())
+            _, idx = KNN(1, transpose_mode=False)(x.contiguous(), simp.contiguous())
 
             """Notice that we detach the tensors and do computations in numpy,
             and then convert back to Tensors.
@@ -128,7 +109,6 @@ class SampleNet(nn.Module):
 
             # Convert to numpy arrays in B x N x 3 format. we assume 'bcn' format.
             x = x.permute(0, 2, 1).cpu().detach().numpy()
-            y = y.permute(0, 2, 1).cpu().detach().numpy()
 
             idx = idx.cpu().detach().numpy()
             idx = np.squeeze(idx, axis=1)
@@ -156,9 +136,25 @@ class SampleNet(nn.Module):
         if match is not None:
             match = match.contiguous()
 
-        out = proj if self.training else match
+        return proj if self.training else match
+        # return simp, proj, match
 
-        return out
+    def forward(self, x: torch.Tensor):
+        # x shape should be B x 3 x N
+        if self.input_shape == "bnc":
+            x = x.permute(0, 2, 1)
+
+        if x.shape[1] != 3:
+            raise RuntimeError("shape of x must be of [batch x 3 x num_in_points]")
+
+        y = self.encode_global(x)
+        y = F.relu(self.bn_fc1(self.fc1(y)))
+        y = F.relu(self.bn_fc2(self.fc2(y)))
+        y = F.relu(self.bn_fc3(self.fc3(y)))
+        y = self.fc4(y)
+
+        simp = y.view(-1, 3, self.num_out_points)
+        return self.project_and_match(x, simp)
 
     # Losses:
     # At inference time, there are no sampling losses.
@@ -183,10 +179,98 @@ class SampleNet(nn.Module):
         return sigma
 
 
+class SampleNetPlus(SampleNet):
+    def __init__(
+        self,
+        num_out_points,
+        bottleneck_size,
+        group_size,
+        initial_temperature=1.0,
+        is_temperature_trainable=True,
+        min_sigma=1e-2,
+        input_shape="bcn",
+        output_shape="bcn",
+        complete_fps=True,
+        skip_projection=False,
+        dense=False,
+    ):
+        super().__init__(
+            num_out_points,
+            bottleneck_size,
+            group_size,
+            initial_temperature,
+            is_temperature_trainable,
+            min_sigma,
+            input_shape,
+            output_shape,
+            complete_fps,
+            skip_projection
+        )
+
+        self.agg_conv1 = torch.nn.Conv1d(bottleneck_size * 2, 256, 1)
+        self.agg_conv2 = torch.nn.Conv1d(256, 256, 1)
+        self.agg_conv3 = torch.nn.Conv1d(256, bottleneck_size, 1)
+
+        self.bn_agg1 = nn.BatchNorm1d(256)
+        self.bn_agg2 = nn.BatchNorm1d(256)
+        self.bn_agg3 = nn.BatchNorm1d(bottleneck_size)
+
+        MLP = ops.DenseMLP if dense else ops.SharedMLP
+        self.patch_encoder = MLP(
+            [3, 64, 64, 64, 128, bottleneck_size],
+            bn=True,
+            add_last_bn=True,
+            add_last_activation=True,
+        )
+
+        self.patcher = samplers.Patcher(k=64)
+
+    def encode_local(self, x: torch.Tensor) -> torch.Tensor:
+        patches = self.patcher(x)
+        normalized_input_patches, _, _scale = ops.normalize_group(
+            patches, method="mean",
+        )
+
+        # Encode patches
+        patches_features = self.patch_encoder(normalized_input_patches)  # [B, C, N, K]
+        return torch.max(patches_features, 3)[0]  # [B, C, N]
+
+    def forward(self, x: torch.Tensor):
+        # x shape should be B x 3 x N
+        if self.input_shape == "bnc":
+            x = x.permute(0, 2, 1)
+
+        if x.shape[1] != 3:
+            raise RuntimeError("shape of x must be of [batch x 3 x num_in_points]")
+
+        N = x.shape[-1]
+
+        # Encode global and local feature vectore
+        local_feature_vectors = self.encode_local(x)  # [B, bottleneck_size, N]
+        global_feature_vector = torch.unsqueeze(self.encode_global(x), dim=2)  # [B, bottleneck_size, 1]
+        global_feature_vector = global_feature_vector.expand(-1, -1, N)
+
+        # Aggregate feature vectors
+        y = torch.cat([local_feature_vectors, global_feature_vector], dim=1)  # [B, bottleneck_size*2, N]
+        y = F.relu(self.bn_agg1(self.agg_conv1(y)))
+        y = F.relu(self.bn_agg2(self.agg_conv2(y)))
+        y = F.relu(self.bn_agg3(self.agg_conv3(y)))
+        y = torch.max(y, 2)[0]  # batch x 128
+
+        y = F.relu(self.bn_fc1(self.fc1(y)))
+        y = F.relu(self.bn_fc2(self.fc2(y)))
+        y = F.relu(self.bn_fc3(self.fc3(y)))
+        y = self.fc4(y)
+
+        simp = y.view(-1, 3, self.num_out_points)
+        return self.project_and_match(x, simp)
+
+
 if __name__ == "__main__":
     point_cloud = np.random.randn(1, 3, 1024)
     point_cloud_pl = torch.tensor(point_cloud, dtype=torch.float32).cuda()
-    net = SampleNet(5, 128, group_size=10, initial_temperature=0.1, complete_fps=True)
+    # net = SampleNet(5, 128, group_size=10, initial_temperature=0.1, complete_fps=True)
+    net = SampleNetPlus(5, 128, group_size=10, initial_temperature=0.1, complete_fps=True)
 
     net.cuda()
     net.eval()

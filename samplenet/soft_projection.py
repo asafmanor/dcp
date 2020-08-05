@@ -82,7 +82,7 @@ class SoftProjection(nn.Module):
 
         idx = idx.permute(0, 2, 1).type(
             torch.int32
-        )  # index should be Batch x QueryPoints x K
+        )  # index should be batch x QueryPoints x K
         grouped_points = group_point(point_cloud, idx)  # B x 3 x QueryPoints x K
         grouped_features = (
             None if point_features is None else group_point(point_features, idx)
