@@ -28,6 +28,7 @@ class SampleNet(nn.Module):
         output_shape="bcn",
         complete_fps=True,
         skip_projection=False,
+        debug=False,
     ):
         super().__init__()
         self.num_out_points = num_out_points
@@ -60,6 +61,7 @@ class SampleNet(nn.Module):
         )
         self.skip_projection = skip_projection
         self.complete_fps = complete_fps
+        self.debug = debug
 
         # input / output shapes
         if input_shape not in ["bcn", "bnc"]:
@@ -136,8 +138,10 @@ class SampleNet(nn.Module):
         if match is not None:
             match = match.contiguous()
 
-        return proj if self.training else match
-        # return simp, proj, match
+        if self.debug:
+            return simp, proj, match
+        else:
+            return proj if self.training else match
 
     def forward(self, x: torch.Tensor):
         # x shape should be B x 3 x N
@@ -192,6 +196,7 @@ class SampleNetPlus(SampleNet):
         output_shape="bcn",
         complete_fps=True,
         skip_projection=False,
+        debug=False,
         dense=False,
     ):
         super().__init__(
@@ -204,7 +209,8 @@ class SampleNetPlus(SampleNet):
             input_shape,
             output_shape,
             complete_fps,
-            skip_projection
+            skip_projection,
+            debug,
         )
 
         self.agg_conv1 = torch.nn.Conv1d(bottleneck_size * 2, 256, 1)
@@ -267,18 +273,24 @@ class SampleNetPlus(SampleNet):
 
 
 if __name__ == "__main__":
-    point_cloud = np.random.randn(1, 3, 1024)
+    BATCH_SIZE = 2
+    NUM_OUT_POINTS = 4
+    point_cloud = np.random.randn(BATCH_SIZE, 3, 1024)
     point_cloud_pl = torch.tensor(point_cloud, dtype=torch.float32).cuda()
-    # net = SampleNet(5, 128, group_size=10, initial_temperature=0.1, complete_fps=True)
-    net = SampleNetPlus(5, 128, group_size=10, initial_temperature=0.1, complete_fps=True)
+    # net = SampleNet(NUM_OUT_POINTS, 128, group_size=10, initial_temperature=0.1, complete_fps=True, debug=True)
+    net = SampleNetPlus(NUM_OUT_POINTS, 128, group_size=10, initial_temperature=0.1, complete_fps=True, debug=True)
 
     net.cuda()
-    net.eval()
 
     for param in net.named_modules():
-        print(param)
+        print(param[0])
 
-    simp, proj, match = net.forward(point_cloud_pl)
+    net.eval()
+    _, _, match = net.forward(point_cloud_pl)
+
+    net.train()
+    simp, proj, _ = net.forward(point_cloud_pl)
+
     simp = simp.detach().cpu().numpy()
     proj = proj.detach().cpu().numpy()
     match = match.detach().cpu().numpy()
