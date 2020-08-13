@@ -213,17 +213,15 @@ class SampleNetPlus(SampleNet):
             debug,
         )
 
-        self.agg_conv1 = torch.nn.Conv1d(bottleneck_size * 2, 256, 1)
-        self.agg_conv2 = torch.nn.Conv1d(256, 256, 1)
-        self.agg_conv3 = torch.nn.Conv1d(256, bottleneck_size, 1)
+        self.agg_conv1 = torch.nn.Conv1d(bottleneck_size + 64, 128, 1)
+        self.agg_conv2 = torch.nn.Conv1d(128, bottleneck_size, 1)
 
-        self.bn_agg1 = nn.BatchNorm1d(256)
-        self.bn_agg2 = nn.BatchNorm1d(256)
-        self.bn_agg3 = nn.BatchNorm1d(bottleneck_size)
+        self.bn_agg1 = nn.BatchNorm1d(128)
+        self.bn_agg2 = nn.BatchNorm1d(bottleneck_size)
 
         MLP = ops.DenseMLP if dense else ops.SharedMLP
         self.patch_encoder = MLP(
-            [3, 64, 64, 64, 128, bottleneck_size],
+            [3, 64, 64, 64],
             bn=True,
             add_last_bn=True,
             add_last_activation=True,
@@ -260,7 +258,6 @@ class SampleNetPlus(SampleNet):
         y = torch.cat([local_feature_vectors, global_feature_vector], dim=1)  # [B, bottleneck_size*2, N]
         y = F.relu(self.bn_agg1(self.agg_conv1(y)))
         y = F.relu(self.bn_agg2(self.agg_conv2(y)))
-        y = F.relu(self.bn_agg3(self.agg_conv3(y)))
         y = torch.max(y, 2)[0]  # batch x 128
 
         y = F.relu(self.bn_fc1(self.fc1(y)))
