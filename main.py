@@ -90,11 +90,11 @@ def test_one_epoch(args, net, test_loader):
         samplenet_loss = torch.tensor([0.0]).cuda()
         sampler = net.sampler
         if sampler is not None:
-            src_sampled = sampler(src)
-            target_sampled = sampler(target)
+            src_simplified, src_sampled = sampler(src)
+            target_simplifed, target_sampled = sampler(target)
             if isinstance(sampler, SampleNet):
-                samplenet_loss = 0.5 * sampler.alpha * sampler.get_simplification_loss(src, src_sampled, 0)
-                samplenet_loss += 0.5 * sampler.alpha * sampler.get_simplification_loss(target, target_sampled, 0)
+                samplenet_loss = 0.5 * sampler.alpha * sampler.get_simplification_loss(src, src_simplified, 0)
+                samplenet_loss += 0.5 * sampler.alpha * sampler.get_simplification_loss(target, target_simplifed, 0)
                 samplenet_loss += sampler.lmbda * sampler.get_projection_loss()
         else:
             src_sampled = src
@@ -207,11 +207,11 @@ def train_one_epoch(args, net, train_loader, opt):
         samplenet_loss = torch.tensor([0.0]).cuda()
         sampler = net.sampler
         if sampler is not None:
-            src_sampled = sampler(src)
-            target_sampled = sampler(target)
+            src_simplified, src_sampled = sampler(src)
+            target_simplifed, target_sampled = sampler(target)
             if isinstance(sampler, SampleNet):
-                samplenet_loss = 0.5 * sampler.alpha * sampler.get_simplification_loss(src, src_sampled, 0)
-                samplenet_loss += 0.5 * sampler.alpha * sampler.get_simplification_loss(target, target_sampled, 0)
+                samplenet_loss = 0.5 * sampler.alpha * sampler.get_simplification_loss(src, src_simplified, 0)
+                samplenet_loss += 0.5 * sampler.alpha * sampler.get_simplification_loss(target, target_simplifed, 0)
                 samplenet_loss += sampler.lmbda * sampler.get_projection_loss()
         else:
             src_sampled = src
